@@ -215,6 +215,65 @@ async def most_popular(ctx):
 @commands.has_permissions(administrator=True)
 async def server_health(ctx):
     await ctx.send("🩺 Server is **HEALTHY & ACTIVE**")
+@bot.command()
+async def info(ctx):
+    embed = discord.Embed(
+        title="🛡️ RakshakX Security Bot",
+        description="Advanced Discord Analytics & Activity Monitoring Bot",
+        color=0x0aff9d
+    )
+
+    embed.add_field(
+        name="🤖 What this bot does",
+        value=(
+            "• Tracks **text & voice activity**\n"
+            "• Finds **most active & popular users**\n"
+            "• Shows **peak activity time**\n"
+            "• Generates **server health reports**\n"
+            "• Helps admins understand engagement"
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="📊 Main Commands",
+        value=(
+            "`!most_active` → Top text & voice user\n"
+            "`!most_popular` → Overall popularity score\n"
+            "`!peak_time` → Most active hour\n"
+            "`!stats` → Server statistics\n"
+            "`!server_health` → Admin-only report"
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="👨‍💻 Creator / Researcher",
+        value=(
+            "**Yougenst(14 years old) Hacker** 🧠\n"
+            "• Found **4 bugs in Epic Games Store** 🐞\n"
+            "• **AIR-1 Rank** – TryHackMe (Weekly)\n"
+            "• Cybersecurity • Bug Bounty • Pentesting"
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="🔐 Privacy Notice",
+        value=(
+            "• No message content is stored\n"
+            "• Only activity metadata is analyzed\n"
+            "• Data is used for analytics only"
+        ),
+        inline=False
+    )
+
+    embed.set_footer(
+        text="RakshakX Security • Built for hackers, by a hacker ⚔️"
+    )
+
+    await ctx.send(embed=embed)
+
 
 # ---------- HELP ----------
 @bot.command()
@@ -235,3 +294,4 @@ async def help(ctx):
 
 # ---------- RUN ----------
 bot.run(os.getenv("TOKEN"))
+
