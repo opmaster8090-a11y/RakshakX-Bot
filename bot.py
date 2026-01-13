@@ -14,8 +14,8 @@ intents.voice_states = True
 
 bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
 
-# ---------- DATABASE ----------
-db = sqlite3.connect("analytics.db")
+# ---------- DATABASE (THREAD SAFE) ----------
+db = sqlite3.connect("analytics.db", check_same_thread=False)
 cursor = db.cursor()
 
 cursor.execute("""
@@ -41,12 +41,14 @@ CREATE TABLE IF NOT EXISTS voice_activity (
     join_time INTEGER
 )
 """)
+
 db.commit()
 
 # ---------- READY ----------
 @bot.event
 async def on_ready():
     print(f"[+] Logged in as {bot.user}")
+    print("[+] Database connected")
 
 # ---------- MESSAGE TRACK ----------
 @bot.event
@@ -83,7 +85,7 @@ async def on_voice_state_update(member, before, after):
             INSERT INTO voice_activity (user_id, join_time)
             VALUES (?, ?)
             ON CONFLICT(user_id)
-            DO UPDATE SET join_time = ?
+            DO UPDATE SET join_time=?
         """, (member.id, now, now))
         db.commit()
 
@@ -93,6 +95,7 @@ async def on_voice_state_update(member, before, after):
             (member.id,)
         )
         row = cursor.fetchone()
+
         if row and row[0]:
             join_time, total_time = row
             cursor.execute("""
@@ -160,13 +163,15 @@ async def stats(ctx):
     channels = cursor.fetchone()[0]
 
     await ctx.send(
-        f"📊 **Server Stats**\n👤 Users: {users}\n💬 Channels: {channels}"
+        f"📊 **Server Stats**\n"
+        f"👤 Users tracked: {users}\n"
+        f"💬 Channels tracked: {channels}"
     )
 
 @bot.command()
 @commands.has_permissions(administrator=True)
 async def server_health(ctx):
-    await ctx.send("✅ Server is healthy")
+    await ctx.send("✅ **Server Health:** Stable & Active")
 
 @server_health.error
 async def server_health_error(ctx, error):
@@ -176,11 +181,14 @@ async def server_health_error(ctx, error):
 @bot.command()
 async def help(ctx):
     await ctx.send(
-        "🛡 **RakshakX Security Bot**\n\n"
+        "🛡 **RakshakX Security Bot – Commands** 🛡\n\n"
+        "📊 **Analytics**\n"
         "`!most_active` → Top text & voice user\n"
         "`!peak_time` → Most active hour\n"
-        "`!stats` → Server stats\n"
-        "`!server_health` → Admin only\n"
+        "`!stats` → Server statistics\n\n"
+        "🛠 **Admin**\n"
+        "`!server_health` → Server status\n\n"
+        "🔐 No messages are stored, only activity timestamps."
     )
 
 # ---------- RUN ----------
