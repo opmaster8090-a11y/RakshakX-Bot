@@ -158,8 +158,8 @@ async def check_most_popular_change(guild, new_user_id, score):
         color=discord.Color.green()
     )
 
-    file = discord.File("assets/most_popular.gif", filename="most_popular.gif")
-    embed.set_image(url="attachment://most_popular.gif")
+    file = discord.File("assets/most_popular.png", filename="most_popular.png")
+    embed.set_image(url="attachment://most_popular.png")
 
     embed.set_footer(text="Powered by RakshakX Analytics")
 
@@ -359,4 +359,5 @@ async def help(ctx):
 
 # ---------- RUN ----------
 bot.run(os.getenv("TOKEN"))
+
 
