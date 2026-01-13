@@ -14,8 +14,8 @@ intents.voice_states = True
 
 bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
 
-# ---------- DATABASE (THREAD SAFE) ----------
-db = sqlite3.connect("analytics.db", check_same_thread=False)
+# ---------- DATABASE ----------
+db = sqlite3.connect("analytics.db")
 cursor = db.cursor()
 
 cursor.execute("""
@@ -42,13 +42,19 @@ CREATE TABLE IF NOT EXISTS voice_activity (
 )
 """)
 
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS mention_activity (
+    user_id INTEGER PRIMARY KEY,
+    mention_count INTEGER DEFAULT 0
+)
+""")
+
 db.commit()
 
 # ---------- READY ----------
 @bot.event
 async def on_ready():
     print(f"[+] Logged in as {bot.user}")
-    print("[+] Database connected")
 
 # ---------- MESSAGE TRACK ----------
 @bot.event
@@ -58,6 +64,7 @@ async def on_message(message):
 
     now = int(time.time())
 
+    # activity
     cursor.execute("""
         INSERT INTO activity (user_id, channel_id, last_seen)
         VALUES (?, ?, ?)
@@ -65,12 +72,24 @@ async def on_message(message):
         DO UPDATE SET last_seen = excluded.last_seen
     """, (message.author.id, message.channel.id, now))
 
+    # message count
     cursor.execute("""
         INSERT INTO message_activity (user_id, msg_count)
         VALUES (?, 1)
         ON CONFLICT(user_id)
         DO UPDATE SET msg_count = msg_count + 1
     """, (message.author.id,))
+
+    # mentions
+    for user in message.mentions:
+        if user.bot:
+            continue
+        cursor.execute("""
+            INSERT INTO mention_activity (user_id, mention_count)
+            VALUES (?, 1)
+            ON CONFLICT(user_id)
+            DO UPDATE SET mention_count = mention_count + 1
+        """, (user.id,))
 
     db.commit()
     await bot.process_commands(message)
@@ -85,7 +104,7 @@ async def on_voice_state_update(member, before, after):
             INSERT INTO voice_activity (user_id, join_time)
             VALUES (?, ?)
             ON CONFLICT(user_id)
-            DO UPDATE SET join_time=?
+            DO UPDATE SET join_time = ?
         """, (member.id, now, now))
         db.commit()
 
@@ -95,7 +114,6 @@ async def on_voice_state_update(member, before, after):
             (member.id,)
         )
         row = cursor.fetchone()
-
         if row and row[0]:
             join_time, total_time = row
             cursor.execute("""
@@ -106,6 +124,7 @@ async def on_voice_state_update(member, before, after):
             db.commit()
 
 # ---------- COMMANDS ----------
+
 @bot.command()
 async def most_active(ctx):
     cursor.execute("""
@@ -124,25 +143,54 @@ async def most_active(ctx):
     """)
     voice = cursor.fetchone()
 
-    msg = "🏆 **Most Active Users**\n\n"
+    msg = "🏆 **MOST ACTIVE USERS** 🏆\n\n"
 
     if text and ctx.guild.get_member(text[0]):
-        msg += f"📝 Text: **{ctx.guild.get_member(text[0]).display_name}** ({text[1]} msgs)\n"
+        msg += f"📝 **Text King:** {ctx.guild.get_member(text[0]).display_name} ({text[1]} msgs)\n"
     else:
-        msg += "📝 Text: None\n"
+        msg += "📝 **Text King:** None\n"
 
     if voice and ctx.guild.get_member(voice[0]):
-        msg += f"🎙 Voice: **{ctx.guild.get_member(voice[0]).display_name}** ({voice[1]//60} min)"
+        msg += f"🎙 **Voice King:** {ctx.guild.get_member(voice[0]).display_name} ({voice[1]//60} min)"
     else:
-        msg += "🎙 Voice: None"
+        msg += "🎙 **Voice King:** None"
 
     await ctx.send(msg)
+
+@bot.command()
+async def most_popular(ctx):
+    scores = {}
+
+    cursor.execute("SELECT user_id, msg_count FROM message_activity")
+    for u, c in cursor.fetchall():
+        scores[u] = scores.get(u, 0) + c
+
+    cursor.execute("SELECT user_id, total_time FROM voice_activity")
+    for u, t in cursor.fetchall():
+        scores[u] = scores.get(u, 0) + (t // 60)
+
+    cursor.execute("SELECT user_id, mention_count FROM mention_activity")
+    for u, m in cursor.fetchall():
+        scores[u] = scores.get(u, 0) + (m * 3)
+
+    if not scores:
+        await ctx.send("No popularity data yet 📉")
+        return
+
+    top_id = max(scores, key=scores.get)
+    member = ctx.guild.get_member(top_id)
+
+    await ctx.send(
+        "🌟 **MOST POPULAR USER** 🌟\n\n"
+        f"👤 **{member.display_name if member else 'Unknown'}**\n"
+        f"🔥 Popularity Score: **{scores[top_id]}**\n\n"
+        "_Messages + Voice + Mentions based_"
+    )
 
 @bot.command()
 async def peak_time(ctx):
     cursor.execute("SELECT last_seen FROM activity")
     rows = cursor.fetchall()
-
     if not rows:
         await ctx.send("No data yet 📉")
         return
@@ -151,7 +199,7 @@ async def peak_time(ctx):
     hour, count = Counter(hours).most_common(1)[0]
 
     await ctx.send(
-        f"⏰ **Peak Activity Time**\n🔥 {hour}:00–{hour}:59 ({count} msgs)"
+        f"⏰ **PEAK ACTIVITY TIME**\n🔥 {hour}:00 – {hour}:59 ({count} msgs)"
     )
 
 @bot.command()
@@ -163,32 +211,36 @@ async def stats(ctx):
     channels = cursor.fetchone()[0]
 
     await ctx.send(
-        f"📊 **Server Stats**\n"
-        f"👤 Users tracked: {users}\n"
-        f"💬 Channels tracked: {channels}"
+        f"📊 **SERVER STATS**\n\n"
+        f"👥 Users Tracked: **{users}**\n"
+        f"💬 Channels Tracked: **{channels}**"
     )
 
 @bot.command()
 @commands.has_permissions(administrator=True)
 async def server_health(ctx):
-    await ctx.send("✅ **Server Health:** Stable & Active")
+    await ctx.send("🟢 **Server Health: STABLE & ACTIVE**")
 
 @server_health.error
 async def server_health_error(ctx, error):
     if isinstance(error, commands.MissingPermissions):
         await ctx.send("❌ Admin permission required")
 
+# ---------- DECORATIVE HELP ----------
 @bot.command()
 async def help(ctx):
     await ctx.send(
-        "🛡 **RakshakX Security Bot – Commands** 🛡\n\n"
-        "📊 **Analytics**\n"
-        "`!most_active` → Top text & voice user\n"
-        "`!peak_time` → Most active hour\n"
-        "`!stats` → Server statistics\n\n"
-        "🛠 **Admin**\n"
-        "`!server_health` → Server status\n\n"
-        "🔐 No messages are stored, only activity timestamps."
+        "🛡️ **RAKSHAKX SECURITY BOT** 🛡️\n\n"
+        "📈 **Analytics Commands**\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        "🏆 `!most_active` → Top text & voice user\n"
+        "🌟 `!most_popular` → Most famous user\n"
+        "⏰ `!peak_time` → Busiest server hour\n"
+        "📊 `!stats` → Server statistics\n\n"
+        "🔐 **Admin Only**\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        "🩺 `!server_health` → Server status\n\n"
+        "⚠️ _No messages are stored. Only activity metadata._"
     )
 
 # ---------- RUN ----------
