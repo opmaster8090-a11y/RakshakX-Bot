@@ -46,6 +46,14 @@ CREATE TABLE IF NOT EXISTS mention_activity (
 )
 """)
 
+# ✅ ADDITION (DO NOT REMOVE ANYTHING ELSE)
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS bot_state (
+    key TEXT PRIMARY KEY,
+    value TEXT
+)
+""")
+
 db.commit()
 
 # ---------- READY ----------
@@ -114,6 +122,46 @@ async def on_voice_state_update(member, before, after):
                 WHERE user_id=?
             """, (row[1] + (now - row[0]), member.id))
             db.commit()
+
+# ---------- 🔔 MOST POPULAR CHANGE CHECK (ADDED) ----------
+async def check_most_popular_change(guild, new_user_id, score):
+    cursor.execute(
+        "SELECT value FROM bot_state WHERE key='most_popular'"
+    )
+    row = cursor.fetchone()
+
+    if row and row[0] == str(new_user_id):
+        return  # same user, no announcement
+
+    cursor.execute(
+        "INSERT OR REPLACE INTO bot_state (key, value) VALUES (?, ?)",
+        ("most_popular", str(new_user_id))
+    )
+    db.commit()
+
+    channel = discord.utils.get(guild.text_channels, name="chat")
+    if not channel:
+        return
+
+    member = guild.get_member(new_user_id)
+    if not member:
+        return
+
+    file = discord.File("assets/most_popular.gif", filename="king.gif")
+
+    embed = discord.Embed(
+        description=(
+            f"👑 **NEW MOST POPULAR MEMBER** 👑\n\n"
+            f"✨ {member.mention} is now ruling the server!\n"
+            f"🔥 Popularity Score: **{score}**"
+        ),
+        color=discord.Color.green()
+    )
+
+    embed.set_image(url="attachment://king.gif")
+    embed.set_footer(text="Powered by RakshakX Analytics")
+
+    await channel.send(content="@everyone", embed=embed, file=file)
 
 # ---------- COMMANDS ----------
 
@@ -192,29 +240,46 @@ async def most_active(ctx):
 
 @bot.command()
 async def most_popular(ctx):
-    score={}
-    for u,c in cursor.execute("SELECT user_id,msg_count FROM message_activity"):
-        score[u]=score.get(u,0)+c
-    for u,t in cursor.execute("SELECT user_id,total_time FROM voice_activity"):
-        score[u]=score.get(u,0)+(t//60)
-    for u,m in cursor.execute("SELECT user_id,mention_count FROM mention_activity"):
-        score[u]=score.get(u,0)+(m*3)
+    score = {}
+
+    for u, c in cursor.execute("SELECT user_id, msg_count FROM message_activity"):
+        score[u] = score.get(u, 0) + c
+
+    for u, t in cursor.execute("SELECT user_id, total_time FROM voice_activity"):
+        score[u] = score.get(u, 0) + (t // 60)
+
+    for u, m in cursor.execute("SELECT user_id, mention_count FROM mention_activity"):
+        score[u] = score.get(u, 0) + (m * 3)
 
     if not score:
-        return await ctx.send("No data yet")
+        return await ctx.send("❌ No data yet")
 
-    top=max(score,key=score.get)
-    m=ctx.guild.get_member(top)
-    await ctx.send(
-        f"🌟 **Most Popular User** 🌟\n"
-        f"👤 {m.display_name if m else 'Unknown'}\n"
-        f"🔥 Score: {score[top]}"
+    top = max(score, key=score.get)
+    member = ctx.guild.get_member(top)
+
+    file = discord.File("assets/most_popular.gif", filename="king.gif")
+
+    embed = discord.Embed(
+        description=(
+            f"👑 **MOST POPULAR MEMBER** 👑\n\n"
+            f"✨ {member.mention if member else 'Unknown'}\n"
+            f"🔥 Popularity Score: **{score[top]}**"
+        ),
+        color=discord.Color.green()
     )
+
+    embed.set_image(url="attachment://king.gif")
+    embed.set_footer(text="Powered by RakshakX Analytics")
+
+    await ctx.send(embed=embed, file=file)
+
+    await check_most_popular_change(ctx.guild, top, score[top])
 
 @bot.command()
 @commands.has_permissions(administrator=True)
 async def server_health(ctx):
     await ctx.send("🩺 Server is **HEALTHY & ACTIVE**")
+
 @bot.command()
 async def info(ctx):
     embed = discord.Embed(
@@ -274,8 +339,6 @@ async def info(ctx):
 
     await ctx.send(embed=embed)
 
-
-# ---------- HELP ----------
 @bot.command()
 async def help(ctx):
     await ctx.send(
@@ -294,4 +357,3 @@ async def help(ctx):
 
 # ---------- RUN ----------
 bot.run(os.getenv("TOKEN"))
-
