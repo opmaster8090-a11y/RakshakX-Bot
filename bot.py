@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS mention_activity (
 )
 """)
 
-# ✅ ADDITION (DO NOT REMOVE ANYTHING ELSE)
+# ---- STATE TABLE (FOR MOST POPULAR CHANGE) ----
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS bot_state (
     key TEXT PRIMARY KEY,
@@ -123,15 +123,16 @@ async def on_voice_state_update(member, before, after):
             """, (row[1] + (now - row[0]), member.id))
             db.commit()
 
-# ---------- 🔔 MOST POPULAR CHANGE CHECK (ADDED) ----------
+# ---------- MOST POPULAR CHANGE CHECK ----------
 async def check_most_popular_change(guild, new_user_id, score):
     cursor.execute(
         "SELECT value FROM bot_state WHERE key='most_popular'"
     )
     row = cursor.fetchone()
 
+    # same user → no announcement
     if row and row[0] == str(new_user_id):
-        return  # same user, no announcement
+        return
 
     cursor.execute(
         "INSERT OR REPLACE INTO bot_state (key, value) VALUES (?, ?)",
@@ -147,7 +148,10 @@ async def check_most_popular_change(guild, new_user_id, score):
     if not member:
         return
 
-    file = discord.File("assets/most_popular.png", filename="most_popular.png")
+    file = discord.File(
+        "assets/most_popular.png",
+        filename="most_popular.png"
+    )
 
     embed = discord.Embed(
         description=(
@@ -158,12 +162,14 @@ async def check_most_popular_change(guild, new_user_id, score):
         color=discord.Color.green()
     )
 
-    file = discord.File("assets/most_popular.png", filename="most_popular.png")
     embed.set_image(url="attachment://most_popular.png")
-
     embed.set_footer(text="Powered by RakshakX Analytics")
 
-    await channel.send(content="@everyone", embed=embed, file=file)
+    await channel.send(
+        content="@everyone",
+        embed=embed,
+        file=file
+    )
 
 # ---------- COMMANDS ----------
 
@@ -181,7 +187,7 @@ async def activity(ctx):
     week = 7*24*60*60
     cursor.execute("SELECT user_id, MAX(last_seen) FROM activity GROUP BY user_id")
     rows = cursor.fetchall()
-    active = sum(1 for _, t in rows if now-t <= week)
+    active = sum(1 for _, t in rows if now - t <= week)
     inactive = len(rows) - active
     await ctx.send(f"🟢 Active: {active}\n🔴 Inactive: {inactive}")
 
@@ -192,10 +198,12 @@ async def who_active(ctx):
     cursor.execute("SELECT user_id, MAX(last_seen) FROM activity GROUP BY user_id")
     rows = cursor.fetchall()
     active, inactive = [], []
+
     for uid, t in rows:
         m = ctx.guild.get_member(uid)
-        if not m: continue
-        (active if now-t<=week else inactive).append(m.display_name)
+        if not m:
+            continue
+        (active if now - t <= week else inactive).append(m.display_name)
 
     await ctx.send(
         "🟢 **Active Users**\n" + ("\n".join(active) or "None") +
@@ -205,14 +213,16 @@ async def who_active(ctx):
 @bot.command()
 async def dead_channels(ctx):
     now = int(time.time())
-    limit = 14*24*60*60
+    limit = 14 * 24 * 60 * 60
     cursor.execute("SELECT channel_id, MAX(last_seen) FROM activity GROUP BY channel_id")
-    dead=[]
-    for cid,t in cursor.fetchall():
-        ch=ctx.guild.get_channel(cid)
-        if ch and now-t>limit:
+    dead = []
+
+    for cid, t in cursor.fetchall():
+        ch = ctx.guild.get_channel(cid)
+        if ch and now - t > limit:
             dead.append(ch.mention)
-    await ctx.send("💀 Dead Channels:\n"+("\n".join(dead) if dead else "None"))
+
+    await ctx.send("💀 Dead Channels:\n" + ("\n".join(dead) if dead else "None"))
 
 @bot.command()
 async def peak_time(ctx):
@@ -220,24 +230,35 @@ async def peak_time(ctx):
     rows = cursor.fetchall()
     if not rows:
         return await ctx.send("No data")
-    hours=[datetime.datetime.fromtimestamp(r[0]).hour for r in rows]
-    h,c=Counter(hours).most_common(1)[0]
+
+    hours = [datetime.datetime.fromtimestamp(r[0]).hour for r in rows]
+    h, c = Counter(hours).most_common(1)[0]
     await ctx.send(f"⏰ Peak Time: {h}:00–{h}:59 ({c} msgs)")
 
 @bot.command()
 async def most_active(ctx):
-    cursor.execute("SELECT user_id,msg_count FROM message_activity ORDER BY msg_count DESC LIMIT 1")
-    text=cursor.fetchone()
-    cursor.execute("SELECT user_id,total_time FROM voice_activity ORDER BY total_time DESC LIMIT 1")
-    voice=cursor.fetchone()
+    cursor.execute(
+        "SELECT user_id, msg_count FROM message_activity ORDER BY msg_count DESC LIMIT 1"
+    )
+    text = cursor.fetchone()
 
-    msg="🏆 **Most Active Users**\n\n"
+    cursor.execute(
+        "SELECT user_id, total_time FROM voice_activity ORDER BY total_time DESC LIMIT 1"
+    )
+    voice = cursor.fetchone()
+
+    msg = "🏆 **Most Active Users**\n\n"
+
     if text and ctx.guild.get_member(text[0]):
-        msg+=f"📝 Text: {ctx.guild.get_member(text[0]).display_name} ({text[1]})\n"
-    else: msg+="📝 Text: None\n"
+        msg += f"📝 Text: {ctx.guild.get_member(text[0]).display_name} ({text[1]})\n"
+    else:
+        msg += "📝 Text: None\n"
+
     if voice and ctx.guild.get_member(voice[0]):
-        msg+=f"🎙 Voice: {ctx.guild.get_member(voice[0]).display_name} ({voice[1]//60} min)"
-    else: msg+="🎙 Voice: None"
+        msg += f"🎙 Voice: {ctx.guild.get_member(voice[0]).display_name} ({voice[1]//60} min)"
+    else:
+        msg += "🎙 Voice: None"
+
     await ctx.send(msg)
 
 @bot.command()
@@ -259,7 +280,10 @@ async def most_popular(ctx):
     top = max(score, key=score.get)
     member = ctx.guild.get_member(top)
 
-    file = discord.File("assets/most_popular.gif", filename="king.gif")
+    file = discord.File(
+        "assets/most_popular.png",
+        filename="most_popular.png"
+    )
 
     embed = discord.Embed(
         description=(
@@ -270,7 +294,7 @@ async def most_popular(ctx):
         color=discord.Color.green()
     )
 
-    embed.set_image(url="attachment://king.gif")
+    embed.set_image(url="attachment://most_popular.png")
     embed.set_footer(text="Powered by RakshakX Analytics")
 
     await ctx.send(embed=embed, file=file)
@@ -359,6 +383,3 @@ async def help(ctx):
 
 # ---------- RUN ----------
 bot.run(os.getenv("TOKEN"))
-
-
-
