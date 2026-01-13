@@ -147,7 +147,7 @@ async def check_most_popular_change(guild, new_user_id, score):
     if not member:
         return
 
-    file = discord.File("assets/most_popular.gif", filename="king.gif")
+    file = discord.File("assets/most_popular.png", filename="most_popular.png")
 
     embed = discord.Embed(
         description=(
@@ -359,5 +359,6 @@ async def help(ctx):
 
 # ---------- RUN ----------
 bot.run(os.getenv("TOKEN"))
+
 
 
